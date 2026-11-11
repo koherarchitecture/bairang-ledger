@@ -64,11 +64,9 @@ createServer(async (req, res) => {
       const file = {
         type: 'bairang_invitation', episode: 1, token: opened.token, question: QUESTION, pitch: PITCH,
         pitch_form: 'https://forms.prayasabhinav.net/f/bairang-pitch',
-        ledger: 'https://github.com/koherarchitecture/bairang-ledger',
-        ledger_fingerprint: opened.fp, ledger_round: opened.round, ledger_opens: opened.opensAt,
         site: 'https://bairang.koher.app',
       }
-      return res.end(page(`<p>Your token:</p><p><code>${opened.token}</code></p><p>A file with your token, your name and the question should have downloaded. If it did not, use the link below. Keep it. Once you leave or reload this page, neither the file nor the token can be shown again. You pitch under the token, with no name.</p><p><a id="again" href="#">Download the file again</a> · <a href="https://bairang.koher.app">Bairang</a></p>
+      return res.end(page(`<p>Your token:</p><p><code>${opened.token}</code></p><p>A file with your token, your name and the question should have downloaded. If it did not, use the link below. Keep it. Once you leave or reload this page, neither the file nor the token can be shown again. You pitch under the token, with no name, here: <a href="https://forms.prayasabhinav.net/f/bairang-pitch">the pitch form</a>.</p><p><a id="again" href="#">Download the file again</a> · <a href="https://bairang.koher.app">Bairang</a></p>
 <script>
 const file = ${JSON.stringify(file).replace(/</g, '\\u003c')}
 const name = new URLSearchParams(location.hash.slice(1)).get('name')
