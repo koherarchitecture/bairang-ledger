@@ -5,7 +5,8 @@
 // the server included. The ledger file is public; only the locked text and the
 // fingerprint of an invitation link are in it.
 //
-//   node ledger.mjs resolve   opens every entry whose round has passed
+//   node ledger.mjs resolve   opens every entry whose round has passed: each
+//                             person, their token and their accepted pitches
 //
 // Invitations and tokens are written by server.mjs, the only writer.
 // LEDGER sets the file, LOCK_SECONDS the lock (both only for testing).
@@ -49,15 +50,28 @@ export async function open(secret) {
   return { token, fp, ...(await lock(fp, 'token', token)) }
 }
 
+// An accepted pitch: locks the token and the pitch together. The entry has no
+// fingerprint, so nothing in the open ledger ties it to an invitation; in ten
+// years it is joined to its person by the token.
+export async function accept(token, pitch) {
+  return lock(null, 'pitch', JSON.stringify({ token, pitch }))
+}
+
 async function resolve() {
   const now = roundAt(Date.now(), await client.chain().info())
   const people = {}
+  const pitches = []
   for (const e of entries()) {
     if (e.round > now) continue
+    const text = (await timelockDecrypt(e.ciphertext, client)).toString()
+    if (e.kind === 'pitch') { pitches.push(JSON.parse(text)); continue }
     people[e.fp] ??= {}
-    people[e.fp][e.kind] = (await timelockDecrypt(e.ciphertext, client)).toString()
+    people[e.fp][e.kind] = text
   }
-  for (const p of Object.values(people)) console.log(`${p.name ?? '?'}\t${p.token ?? '(link never opened)'}`)
+  for (const p of Object.values(people)) {
+    console.log(`${p.name ?? '?'}\t${p.token ?? '(link never opened)'}`)
+    for (const x of pitches.filter(x => x.token === p.token)) console.log(`\t${x.pitch.replaceAll('\n', '\n\t')}`)
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'resolve') await resolve()
