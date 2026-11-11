@@ -5,6 +5,8 @@
 //                      and downloads it as a JSON file with the name and the question
 //   POST /invite       body: the name; header: Authorization: Bearer <ADMIN_KEY>;
 //                      returns the invitation link
+//   POST /accept       body: the token on the first line, the pitch after it;
+//                      same header; locks the accepted pitch in the ledger
 //
 // The ledger lives in a clone of the public repository at REPO (on a
 // persistent volume); every new entry is committed there and pushed with the
@@ -22,7 +24,7 @@ const QUESTION = 'When something I make does not reach somebody, either I failed
 const PITCH = 'Half a page, sent under your token with no name: what you will make, what it is made of, how big it is or how long it runs, and what it needs from the space (a wall, a table, a screen, sound, power).'
 
 writeFileSync('/tmp/deploy_key', Buffer.from(DEPLOY_KEY, 'base64'), { mode: 0o600 })
-process.env.GIT_SSH_COMMAND = 'ssh -i /tmp/deploy_key -o StrictHostKeyChecking=accept-new'
+process.env.GIT_SSH_COMMAND = 'ssh -i /tmp/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new'
 const git = (...args) => execFileSync('git', ['-C', REPO, ...args], { stdio: 'ignore' })
 if (!existsSync(REPO)) execFileSync('git', ['clone', '-q', ORIGIN, REPO], { stdio: 'ignore' })
 git('config', 'remote.origin.pushurl', PUSH)
@@ -30,7 +32,7 @@ git('config', 'user.name', 'Bairang ledger')
 git('config', 'user.email', 'hello@koher.app')
 try { git('pull', '-q', '--rebase') } catch {}
 process.env.LEDGER = `${REPO}/ledger.jsonl`
-const { invite, open } = await import('./ledger.mjs')
+const { accept, invite, open } = await import('./ledger.mjs')
 
 // One write at a time, each committed and pushed before the next.
 let queue = Promise.resolve()
@@ -38,9 +40,11 @@ const write = job => {
   const run = queue.then(async () => {
     const result = await job()
     if (result) { git('add', 'ledger.jsonl'); git('commit', '-qm', 'Ledger entry') }
-    // A change made to the repository elsewhere is taken in first; an entry not
-    // yet pushed goes with the next push.
-    try { git('pull', '-q', '--rebase'); git('push', '-q') } catch {}
+    // A change made to the repository elsewhere is taken in first (a pull that
+    // cannot rebase cleanly is undone, never left half-done); an entry not yet
+    // pushed goes with the next push.
+    try { git('pull', '-q', '--rebase') } catch { try { git('rebase', '--abort') } catch {} }
+    try { git('push', '-q') } catch {}
     return result
   })
   queue = run.catch(() => {})
@@ -74,6 +78,15 @@ const save = () => Object.assign(document.createElement('a'), { href: url, downl
 document.getElementById('again').onclick = e => { e.preventDefault(); save() }
 save()
 </script>`))
+    }
+    if (req.method === 'POST' && req.url === '/accept' && req.headers.authorization === `Bearer ${ADMIN_KEY}`) {
+      let body = ''
+      for await (const chunk of req) body += chunk
+      const [token, ...pitch] = body.split('\n')
+      if (!token.trim() || !pitch.join('\n').trim()) return res.writeHead(400).end()
+      await write(() => accept(token.trim(), pitch.join('\n').trim()))
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
+      return res.end('Locked in the ledger.\n')
     }
     if (req.method === 'POST' && req.url === '/invite' && req.headers.authorization === `Bearer ${ADMIN_KEY}`) {
       let name = ''
