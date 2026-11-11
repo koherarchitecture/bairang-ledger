@@ -63,6 +63,7 @@ createServer(async (req, res) => {
       // the link after #, which the browser never sends, so the server never sees it.
       const file = {
         type: 'bairang_invitation', episode: 1, token: opened.token, question: QUESTION, pitch: PITCH,
+        pitch_form: 'https://forms.prayasabhinav.net/f/bairang-pitch',
         ledger: 'https://github.com/koherarchitecture/bairang-ledger',
         ledger_fingerprint: opened.fp, ledger_round: opened.round, ledger_opens: opened.opensAt,
         site: 'https://bairang.koher.app',

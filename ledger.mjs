@@ -11,7 +11,7 @@
 // Invitations and tokens are written by server.mjs, the only writer.
 // LEDGER sets the file, LOCK_SECONDS the lock (both only for testing).
 
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { Buffer, mainnetClient, roundAt, roundTime, timelockDecrypt, timelockEncrypt } from 'tlock-js'
 
@@ -46,7 +46,10 @@ export async function open(secret) {
   const fp = fingerprint(secret)
   const kinds = entries().filter(e => e.fp === fp).map(e => e.kind)
   if (!kinds.includes('name') || kinds.includes('token')) return null
-  const token = randomBytes(6).toString('base64url')
+  // Eight random characters and eight of their signature under TOKEN_KEY, which the pitch form
+  // shares, so the form can tell a real token without holding a list of them.
+  const r = randomBytes(6).toString('base64url')
+  const token = r + createHmac('sha256', process.env.TOKEN_KEY).update(r).digest('base64url').slice(0, 8)
   return { token, fp, ...(await lock(fp, 'token', token)) }
 }
 
