@@ -38,7 +38,9 @@ const write = job => {
   const run = queue.then(async () => {
     const result = await job()
     if (result) { git('add', 'ledger.jsonl'); git('commit', '-qm', 'Ledger entry') }
-    try { git('push', '-q') } catch {} // an entry not yet pushed goes with the next push
+    // A change made to the repository elsewhere is taken in first; an entry not
+    // yet pushed goes with the next push.
+    try { git('pull', '-q', '--rebase'); git('push', '-q') } catch {}
     return result
   })
   queue = run.catch(() => {})
