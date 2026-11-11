@@ -1,0 +1,8 @@
+{
+  "name": "bairang-ledger",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "tlock-js": "0.9.0"
+  }
+}
