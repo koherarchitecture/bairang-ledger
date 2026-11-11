@@ -1,14 +1,14 @@
 // Bairang ledger: which token belongs to which person, locked for ten years.
 //
-//   node ledger.mjs invite "Name"   make an invitation; prints the secret for its link
-//   node ledger.mjs open <secret>   first opening of a link; prints the token, once
-//   node ledger.mjs resolve         opens every entry whose time has come; prints name and token
-//
 // Each entry is locked with drand timelock encryption (quicknet) to the round
 // ten years after it is written. Nobody can read it before then, whoever runs
-// this program included. The ledger file is public; only the locked text and
-// the link's fingerprint are in it. LEDGER sets the file, LOCK_SECONDS the lock
-// (both only for testing).
+// the server included. The ledger file is public; only the locked text and the
+// fingerprint of an invitation link are in it.
+//
+//   node ledger.mjs resolve   opens every entry whose round has passed
+//
+// Invitations and tokens are written by server.mjs, the only writer.
+// LEDGER sets the file, LOCK_SECONDS the lock (both only for testing).
 
 import { createHash, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
@@ -28,21 +28,25 @@ async function lock(fp, kind, text) {
   appendFileSync(LEDGER, JSON.stringify({ fp, kind, round, ciphertext }) + '\n')
 }
 
-const [command, arg] = process.argv.slice(2)
-
-if (command === 'invite') {
+// Makes an invitation: locks the name, returns the secret for its link.
+export async function invite(name) {
   const secret = randomBytes(16).toString('base64url')
-  await lock(fingerprint(secret), 'name', arg)
-  console.log(secret)
-} else if (command === 'open') {
-  const fp = fingerprint(arg)
+  await lock(fingerprint(secret), 'name', name)
+  return secret
+}
+
+// First opening of a link: locks a new token and returns it, once.
+// Returns null for a link that does not exist or has been opened.
+export async function open(secret) {
+  const fp = fingerprint(secret)
   const kinds = entries().filter(e => e.fp === fp).map(e => e.kind)
-  if (!kinds.includes('name')) throw new Error('no such invitation')
-  if (kinds.includes('token')) throw new Error('this link has already been opened')
+  if (!kinds.includes('name') || kinds.includes('token')) return null
   const token = randomBytes(6).toString('base64url')
   await lock(fp, 'token', token)
-  console.log(token)
-} else if (command === 'resolve') {
+  return token
+}
+
+async function resolve() {
   const now = roundAt(Date.now(), await client.chain().info())
   const people = {}
   for (const e of entries()) {
@@ -51,6 +55,6 @@ if (command === 'invite') {
     people[e.fp][e.kind] = (await timelockDecrypt(e.ciphertext, client)).toString()
   }
   for (const p of Object.values(people)) console.log(`${p.name ?? '?'}\t${p.token ?? '(link never opened)'}`)
-} else {
-  console.log('node ledger.mjs invite "Name" | open <secret> | resolve')
 }
+
+if (import.meta.url === `file://${process.argv[1]}` && process.argv[2] === 'resolve') await resolve()
