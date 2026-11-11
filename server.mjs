@@ -1,7 +1,8 @@
 // The only writer of the Bairang ledger. It keeps no log: no request, link,
 // name or token is printed or stored anywhere but locked in the ledger.
 //
-//   GET  /i/<secret>   first opening of an invitation link: shows the token, once
+//   GET  /i/<secret>   first opening of an invitation link: shows the token, once,
+//                      and downloads it as a JSON file with the name and the question
 //   POST /invite       body: the name; header: Authorization: Bearer <ADMIN_KEY>;
 //                      returns the invitation link
 //
@@ -17,6 +18,8 @@ const { ADMIN_KEY, DEPLOY_KEY, REPO = '/data/repo', PORT = 80 } = process.env
 const ORIGIN = 'https://github.com/koherarchitecture/bairang-ledger.git'
 const PUSH = 'git@github.com:koherarchitecture/bairang-ledger.git'
 const LINK = 'https://bairang.koher.app/i/'
+const QUESTION = 'When something I make does not reach somebody, either I failed to send it or they failed to receive it. I can rarely tell which. Make one work about something that did not arrive, and leave the question of whose failure it was open inside the work.'
+const PITCH = 'Half a page, sent under your token with no name: what you will make, what it is made of, how big it is or how long it runs, and what it needs from the space (a wall, a table, a screen, sound, power).'
 
 writeFileSync('/tmp/deploy_key', Buffer.from(DEPLOY_KEY, 'base64'), { mode: 0o600 })
 process.env.GIT_SSH_COMMAND = 'ssh -i /tmp/deploy_key -o StrictHostKeyChecking=accept-new'
@@ -47,11 +50,28 @@ const page = body => `<!doctype html><meta charset="utf-8"><meta name="viewport"
 createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url.startsWith('/i/')) {
-      const token = await write(() => open(req.url.slice(3).split('?')[0]))
-      res.writeHead(token ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' })
-      return res.end(page(token
-        ? `<p>Your token:</p><p><code>${token}</code></p><p>Write it down. It will not be shown again, and reloading this page will not show it. You pitch under it, with no name.</p><p><a href="https://bairang.koher.app">Bairang</a></p>`
-        : `<p>This link has already been opened, or it does not exist.</p><p><a href="https://bairang.koher.app">Bairang</a></p>`))
+      const opened = await write(() => open(req.url.slice(3).split('?')[0]))
+      res.writeHead(opened ? 200 : 404, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' })
+      if (!opened) return res.end(page(`<p>This link has already been opened, or it does not exist.</p><p><a href="https://bairang.koher.app">Bairang</a></p>`))
+      // The file is put together in the browser. The name comes from the part of
+      // the link after #, which the browser never sends, so the server never sees it.
+      const file = {
+        type: 'bairang_invitation', episode: 1, token: opened.token, question: QUESTION, pitch: PITCH,
+        ledger: 'https://github.com/koherarchitecture/bairang-ledger',
+        ledger_fingerprint: opened.fp, ledger_round: opened.round, ledger_opens: opened.opensAt,
+        site: 'https://bairang.koher.app',
+      }
+      return res.end(page(`<p>Your token:</p><p><code>${opened.token}</code></p><p>A file with your token, your name and the question should have downloaded. If it did not, use the link below. Keep it. Once you leave or reload this page, neither the file nor the token can be shown again. You pitch under the token, with no name.</p><p><a id="again" href="#">Download the file again</a> · <a href="https://bairang.koher.app">Bairang</a></p>
+<script>
+const file = ${JSON.stringify(file).replace(/</g, '\\u003c')}
+const name = new URLSearchParams(location.hash.slice(1)).get('name')
+history.replaceState(null, '', location.pathname)
+const data = name ? { type: file.type, episode: file.episode, name, ...file } : file
+const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + '\\n'], { type: 'application/json' }))
+const save = () => Object.assign(document.createElement('a'), { href: url, download: 'bairang-' + file.token + '.json' }).click()
+document.getElementById('again').onclick = e => { e.preventDefault(); save() }
+save()
+</script>`))
     }
     if (req.method === 'POST' && req.url === '/invite' && req.headers.authorization === `Bearer ${ADMIN_KEY}`) {
       let name = ''
